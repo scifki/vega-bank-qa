@@ -3,51 +3,99 @@ from pathlib import Path
 from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Cm, Inches, Pt, RGBColor
 
 root = Path(__file__).parent
 shots = root / "screenshots"
 
 doc = Document()
 
-# ---------- базовые стили ----------
-style = doc.styles["Normal"]
-style.font.name = "Times New Roman"
-style.font.size = Pt(12)
-style.paragraph_format.space_after = Pt(6)
-style.paragraph_format.line_spacing = 1.15
+# ---------- стили по ГОСТ 7.32 ----------
+normal = doc.styles["Normal"]
+normal.font.name = "Times New Roman"
+normal.font.size = Pt(14)
+normal.font.color.rgb = RGBColor(0, 0, 0)
+pf = normal.paragraph_format
+pf.line_spacing = 1.5
+pf.space_after = Pt(0)
+pf.space_before = Pt(0)
+pf.first_line_indent = Cm(1.25)
+pf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+normal.element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
 
 section = doc.sections[0]
-section.top_margin = Inches(0.8)
-section.bottom_margin = Inches(0.8)
-section.left_margin = Inches(1)
-section.right_margin = Inches(0.8)
+section.page_width = Cm(21)
+section.page_height = Cm(29.7)
+section.top_margin = Cm(2)
+section.bottom_margin = Cm(2)
+section.left_margin = Cm(3)
+section.right_margin = Cm(1.5)
+
+TABLES = 0
+FIGURES = 0
+
+
+def add_page_number(paragraph):
+    run = paragraph.add_run()
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = "PAGE"
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    run._r.append(begin)
+    run._r.append(instr)
+    run._r.append(end)
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(12)
+
+
+# нумерация страниц: титульный лист без номера, но считается первым
+section.different_first_page_header_footer = True
+footer_p = section.footer.paragraphs[0]
+footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+footer_p.paragraph_format.first_line_indent = Cm(0)
+add_page_number(footer_p)
 
 
 def h(text, level=1):
-    p = doc.add_heading(text, level=level)
-    for run in p.runs:
-        run.font.name = "Times New Roman"
-        run.font.color.rgb = RGBColor(0x1F, 0x29, 0x37)
-    return p
+    par = doc.add_heading(level=level)
+    par.paragraph_format.first_line_indent = Cm(1.25 if level == 2 else 0)
+    par.paragraph_format.space_before = Pt(12 if level == 1 else 6)
+    par.paragraph_format.space_after = Pt(6)
+    par.paragraph_format.line_spacing = 1.5
+    par.paragraph_format.keep_with_next = True
+    par.alignment = WD_ALIGN_PARAGRAPH.CENTER if level == 1 else WD_ALIGN_PARAGRAPH.LEFT
+    run = par.add_run(text)
+    run.bold = True
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(14)
+    run.font.color.rgb = RGBColor(0, 0, 0)
+    return par
 
 
-def p(text="", bold=False, italic=False, align=None):
+def p(text="", bold=False, italic=False, align=None, indent=Cm(1.25), size=14):
     par = doc.add_paragraph()
+    par.paragraph_format.first_line_indent = indent
+    if align is not None:
+        par.alignment = align
     run = par.add_run(text)
     run.bold = bold
     run.italic = italic
-    if align:
-        par.alignment = align
+    run.font.size = Pt(size)
     return par
 
 
 def bullets(items):
     for item in items:
-        doc.add_paragraph(item, style="List Bullet")
+        par = doc.add_paragraph(item)
+        par.paragraph_format.first_line_indent = Cm(1.25)
+        par.paragraph_format.left_indent = Cm(0.5)
+        par.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
 
 def shade(paragraph, color="F2F2F2"):
@@ -59,15 +107,24 @@ def shade(paragraph, color="F2F2F2"):
     pPr.append(shd)
 
 
+LISTINGS = 0
+
+
 def code(text, caption=None):
+    global LISTINGS
     if caption:
+        LISTINGS += 1
         cp = doc.add_paragraph()
-        run = cp.add_run(caption)
-        run.italic = True
-        run.font.size = Pt(10)
+        cp.paragraph_format.first_line_indent = Cm(0)
+        cp.paragraph_format.space_before = Pt(6)
+        cp.paragraph_format.keep_with_next = True
+        run = cp.add_run(f"Листинг {LISTINGS} – {caption}")
+        run.font.size = Pt(12)
     par = doc.add_paragraph()
+    par.paragraph_format.first_line_indent = Cm(0)
     par.paragraph_format.space_after = Pt(10)
     par.paragraph_format.line_spacing = 1.0
+    par.alignment = WD_ALIGN_PARAGRAPH.LEFT
     for i, line in enumerate(text.strip("\n").split("\n")):
         run = par.add_run(("" if i == 0 else "\n") + line)
         run.font.name = "Consolas"
@@ -76,17 +133,59 @@ def code(text, caption=None):
     shade(par)
 
 
-def table(headers, rows, widths=None):
+def plain_table(rows, widths=None, header=None):
+    """Таблица без подписи (титульный лист)."""
+    cols = len(rows[0])
+    t = doc.add_table(rows=0, cols=cols)
+    t.style = "Table Grid"
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t.autofit = False
+    if header:
+        cells = t.add_row().cells
+        for i, text in enumerate(header):
+            par = cells[i].paragraphs[0]
+            par.paragraph_format.first_line_indent = Cm(0)
+            run = par.add_run(text)
+            run.bold = True
+            run.font.size = Pt(12)
+    for row in rows:
+        cells = t.add_row().cells
+        for i, value in enumerate(row):
+            par = cells[i].paragraphs[0]
+            par.paragraph_format.first_line_indent = Cm(0)
+            run = par.add_run(str(value))
+            run.font.size = Pt(12)
+    if widths:
+        for row in t.rows:
+            for i, w in enumerate(widths):
+                row.cells[i].width = w
+    return t
+
+
+def table(caption, headers, rows, widths=None):
+    global TABLES
+    TABLES += 1
+    cap = doc.add_paragraph()
+    cap.paragraph_format.first_line_indent = Cm(0)
+    cap.paragraph_format.space_before = Pt(10)
+    cap.paragraph_format.space_after = Pt(4)
+    cap.paragraph_format.keep_with_next = True
+    cap.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run = cap.add_run(f"Таблица {TABLES} – {caption}")
+    run.font.size = Pt(12)
+
     t = doc.add_table(rows=1, cols=len(headers))
     t.style = "Table Grid"
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t.autofit = False
     hdr = t.rows[0].cells
     for i, text in enumerate(headers):
-        hdr[i].text = ""
         par = hdr[i].paragraphs[0]
+        par.paragraph_format.first_line_indent = Cm(0)
+        par.paragraph_format.line_spacing = 1.0
         run = par.add_run(text)
         run.bold = True
-        run.font.size = Pt(10.5)
+        run.font.size = Pt(11)
         shade(par, "E7E9EE")
     trPr = t.rows[0]._tr.get_or_add_trPr()
     tblHeader = OxmlElement("w:tblHeader")
@@ -95,64 +194,103 @@ def table(headers, rows, widths=None):
     for row in rows:
         cells = t.add_row().cells
         for i, value in enumerate(row):
-            cells[i].text = ""
             par = cells[i].paragraphs[0]
+            par.paragraph_format.first_line_indent = Cm(0)
+            par.paragraph_format.line_spacing = 1.0
             run = par.add_run(str(value))
-            run.font.size = Pt(10.5)
+            run.font.size = Pt(11)
     if widths:
         for row in t.rows:
             for i, w in enumerate(widths):
-                row.cells[i].width = Inches(w)
-    doc.add_paragraph()
+                row.cells[i].width = w
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
     return t
 
 
-def img(name, caption, width=6.4):
-    doc.add_picture(str(shots / name), width=Inches(width))
-    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    cp = doc.add_paragraph()
-    cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = cp.add_run(caption)
-    run.italic = True
-    run.font.size = Pt(10)
+def img(name, caption, width=15.5):
+    global FIGURES
+    FIGURES += 1
+    par = doc.add_paragraph()
+    par.paragraph_format.first_line_indent = Cm(0)
+    par.paragraph_format.space_before = Pt(6)
+    par.paragraph_format.keep_with_next = True
+    par.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    par.add_run().add_picture(str(shots / name), width=Cm(width))
+
+    cap = doc.add_paragraph()
+    cap.paragraph_format.first_line_indent = Cm(0)
+    cap.paragraph_format.space_after = Pt(10)
+    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = cap.add_run(f"Рисунок {FIGURES} – {caption}")
+    run.font.size = Pt(12)
 
 
 # ---------- титульный лист ----------
+for _ in range(4):
+    doc.add_paragraph()
+
 tp = doc.add_paragraph()
 tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-tp.paragraph_format.space_before = Pt(90)
+tp.paragraph_format.first_line_indent = Cm(0)
 r = tp.add_run("ПРАКТИЧЕСКАЯ РАБОТА")
 r.bold = True
 r.font.size = Pt(20)
 
 tp2 = doc.add_paragraph()
 tp2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tp2.add_run("Python: организация автоматизации тестирования с нуля")
+tp2.paragraph_format.first_line_indent = Cm(0)
+r = tp2.add_run("Python: организация автоматизации\nтестирования с нуля")
 r.bold = True
-r.font.size = Pt(15)
+r.font.size = Pt(16)
 
 tp3 = doc.add_paragraph()
 tp3.alignment = WD_ALIGN_PARAGRAPH.CENTER
+tp3.paragraph_format.first_line_indent = Cm(0)
 r = tp3.add_run("Учебный кейс «Вега-Банк»")
-r.font.size = Pt(13)
 r.italic = True
+r.font.size = Pt(14)
+
+for _ in range(5):
+    doc.add_paragraph()
+
+plain_table(
+    [
+        ("Выполнил(а)", "Лисевич Арсений"),
+        ("Группа", "Исп/п23-09.2"),
+        ("Дисциплина", "Поддержка и тестирование программных модулей"),
+        ("Проверил(а)", "________________________________"),
+        ("Дата", "28.10.2026"),
+    ],
+    widths=[Cm(4.2), Cm(10.3)],
+)
 
 doc.add_paragraph()
 doc.add_paragraph()
+end = doc.add_paragraph()
+end.alignment = WD_ALIGN_PARAGRAPH.CENTER
+end.paragraph_format.first_line_indent = Cm(0)
+r = end.add_run("2026")
+r.font.size = Pt(14)
 
-info = [
-    ("Дисциплина", "Поддержка и тестирование программных модулей"),
-    ("Выполнил(а)", "________________________________"),
-    ("Группа", "________________________________"),
-    ("Проверил(а)", "________________________________"),
-    ("Дата", "________________________________"),
+doc.add_page_break()
+
+# ---------- содержание ----------
+h("СОДЕРЖАНИЕ", 1)
+contents = [
+    "Задание 1. Изучаем проект",
+    "Задание 2. Требования и стек на Python",
+    "Задание 3. Инфраструктура и каркас репозитория",
+    "Задание 4. Якоря на UI и сценарий Gherkin",
+    "Задание 5. Шаги на Python, запуск и отчёт",
+    "Задание 6. Демо и план внедрения",
+    "Контрольные вопросы",
+    "Структура проекта",
+    "Как запустить",
 ]
-table(["Поле", "Значение"], info, widths=[1.9, 4.3])
-
-doc.add_paragraph()
-p("Проект с автотестами, отчётом Allure и вспомогательными материалами прилагается "
-  "к работе в виде папки с файлами (см. раздел «Структура проекта»).",
-  italic=True, align=WD_ALIGN_PARAGRAPH.CENTER)
+for item in contents:
+    par = doc.add_paragraph(item)
+    par.paragraph_format.first_line_indent = Cm(0)
+    par.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
 doc.add_page_break()
 
@@ -169,7 +307,8 @@ p("Поэтому упор в автоматизации делается на �
 
 h("1.2. Участники разработки", 2)
 table(
-    ["Участник", "Какую роль играет для автоматизации", "Что нужно от него получить"],
+    "Участники разработки",
+    ["Участник", "Роль для автоматизации", "Что нужно от него получить"],
     [
         [
             "Владельцы продуктов",
@@ -197,7 +336,7 @@ table(
             "Заявку на VM под CI-раннеры и сроки поставки, лицензии, согласование бюджета",
         ],
     ],
-    widths=[1.5, 2.3, 2.4],
+    widths=[Cm(3.6), Cm(5.6), Cm(5.9)],
 )
 
 h("1.3. Три вопроса команде «Платежи»", 2)
@@ -217,12 +356,13 @@ h("Задание 2. Требования и стек на Python", 1)
 
 h("2.1. Выбор инструментов", 2)
 table(
+    "Выбор инструментов автоматизации",
     ["Задача", "Варианты", "Выбор и обоснование"],
     [
         [
             "Тестирование Frontend",
             "Selenium, Playwright",
-            "Playwright: авто-ожидания без sleep, один API для Chromium/Firefox/WebKit, "
+            "Playwright: авто-ожидания без sleep, один API для Chromium, Firefox и WebKit, "
             "трассировка и кодогенерация — ручному QA проще освоить",
         ],
         [
@@ -234,7 +374,7 @@ table(
         [
             "Обращения в базу данных",
             "sqlite3, psycopg2, SQLAlchemy",
-            "SQLAlchemy Core + драйвер psycopg2: один код для локальной sqlite и тестового PostgreSQL, "
+            "SQLAlchemy Core с драйвером psycopg2: один код для локальной sqlite и тестового PostgreSQL, "
             "параметризованные запросы без склейки SQL",
         ],
         [
@@ -244,13 +384,13 @@ table(
             "не нужно знать фикстуры pytest — ниже порог входа",
         ],
         [
-            "Отчёты с графиками",
+            "Отчёты о прогоне",
             "Allure, pytest-html",
-            "Allure: шаги, вложения, категории, история прогонов и графики — "
-            "руководителю видно покрытие и динамику, а не один HTML-файл",
+            "HTML-отчёт, который собирается из JSON-результатов behave скриптом make_html_report.py: "
+            "один самодостаточный файл без внешних серверов и Java, открывается в браузере и прикладывается к CI",
         ],
     ],
-    widths=[1.5, 1.4, 3.3],
+    widths=[Cm(3.4), Cm(3.2), Cm(8.5)],
 )
 
 h("2.2. Преимущество и риск Python-стека", 2)
@@ -258,7 +398,7 @@ p("Преимущество: низкий порог входа — ручные
   "быстрее, чем на Java, а библиотеки Playwright и httpx ставятся одной командой, поэтому первые автотесты "
   "появляются в первом же спринте.")
 p("Риск: Python-стек в крупной промышленной эксплуатации требует самодельной обвязки (параллельный запуск, "
-  "распределённые прогоны, стабильность тестов), и меньше готовых «из коробки» решений, чем в Java "
+  "распределённые прогоны, стабильность тестов), и готовых решений «из коробки» меньше, чем в Java "
   "(Selenium Grid, TestNG, Maven). Если каркас не поддерживать, тесты начнут падать и потеряют доверие.")
 
 h("2.3. Сколько нужно автоматизаторов", 2)
@@ -272,55 +412,57 @@ h("Задание 3. Инфраструктура и каркас репозит
 
 h("3.1. Машины и сервисы для удалённого параллельного запуска", 2)
 table(
+    "Инфраструктура запуска автотестов",
     ["Задача", "Варианты", "Выбор и обоснование"],
     [
         [
             "Сервер CI",
             "GitHub Actions, GitLab CI, Jenkins",
             "GitHub Actions: репозиторий уже в GitHub, пайплайн описывается файлом tests.yml, "
-            "первые 2000 минут в месяц бесплатны — экономия бюджета из кейса",
+            "бесплатные минуты покрывают прогоны небольшой команды",
         ],
         [
             "Машина под runner / agent",
-            "свой ноутбук, облачная VM, self-hosted runner",
+            "ноутбук, облачная VM, self-hosted runner",
             "Облачная Linux VM 4 vCPU / 8 ГБ в Docker: прогон не зависит от ноутбука QA, "
             "стенд воспроизводим, браузер ставится в контейнер",
         ],
         [
             "Запуск тестов параллельно",
             "один поток, matrix-джобы, pytest-xdist",
-            "Матрица CI по тегам/командам + встроенный параллелизм Playwright: "
-            "каждая команда — отдельная джоба, прогон регресса не растягивается на часы",
+            "Матрица CI по командам и тегам плюс параллельные воркеры Playwright: "
+            "каждая команда — отдельная джоба, регресс не растягивается на часы",
         ],
         [
             "Система отчётов",
             "Allure server, GitHub Pages, артефакт CI",
-            "Allure-отчёт как артефакт CI + публикация на GitHub Pages: ссылку получают QA и владельцы "
-            "продуктов, история прогонов сохраняется",
+            "HTML-отчёт как артефакт CI: ссылку получают QA и владельцы продуктов, "
+            "история прогонов хранится в GitHub Actions",
         ],
     ],
-    widths=[1.6, 1.6, 3.0],
+    widths=[Cm(3.4), Cm(3.6), Cm(8.1)],
 )
 
 h("3.2. Схема: от репозитория до отчёта", 2)
-img("schema.png", "Рис. 1. Путь тестов: репозиторий → CI → runner → allure-results → отчёт", width=6.5)
+img("schema.png", "Путь тестов: репозиторий → CI → runner → результаты → HTML-отчёт", width=15.5)
 p("Простыми словами: тестировщик отправляет тесты в репозиторий (1), сервер CI замечает изменение и запускает "
   "проверку (2). На отдельной машине (3) тесты открывают браузер и работают параллельно (4). "
-  "Каждый шаг записывается в папку результатов (5), из неё собирается наглядный отчёт (6), "
+  "Каждый шаг записывается в файл результатов (5), из него собирается наглядный отчёт (6), "
   "а ссылка на отчёт уходит команде и на демо (7).")
 
 h("3.3. Назначение файлов и папок проекта на behave", 2)
 table(
+    "Файлы и папки проекта",
     ["Путь", "Назначение"],
     [
         ["features/", "Сценарии на Gherkin (.feature): что проверяем — на языке бизнеса, без кода"],
-        ["features/steps/", "Реализация шагов на Python: один шаг можно использовать во многих сценариях"],
-        ["features/environment.py", "Хуки before_all / before_scenario / after_*: запуск браузера, настройка data-test-id, окружение"],
+        ["features/steps/", "Реализация шагов на Python: один шаг используется во многих сценариях"],
+        ["features/environment.py", "Хуки before_all / before_scenario / after_*: запуск браузера, настройка data-test-id"],
         ["requirements.txt", "Список зависимостей: одной командой pip install -r разворачивается окружение"],
-        ["allure-results/", "Сырые результаты прогона (JSON и вложения), из них строится отчёт; в git не коммитится"],
-        [".github/workflows/tests.yml", "Описание CI-пайплайна: установка зависимостей, прогон тестов, публикация отчёта"],
+        ["reports/", "behave.json с результатами прогона и собранный из него behave-report.html; в git не коммитится"],
+        [".github/workflows/tests.yml", "CI-пайплайн: установка зависимостей, прогон тестов, публикация отчёта"],
     ],
-    widths=[1.9, 4.3],
+    widths=[Cm(5.0), Cm(10.0)],
 )
 
 # ---------- Задание 4 ----------
@@ -328,8 +470,9 @@ h("Задание 4. Якоря на UI и сценарий Gherkin", 1)
 
 h("4.1. Атрибуты data-test-id на странице", 2)
 p("В файл transfer.html добавлены атрибуты всем элементам, с которыми взаимодействует тест "
-  "или в которых проверяется результат. Имена уникальны и говорят о назначении элемента:")
+  "или в которых проверяется результат. Имена уникальны и говорят о назначении элемента.")
 table(
+    "Атрибуты data-test-id",
     ["Элемент", "data-test-id"],
     [
         ["Информация об остатке", "balance-info"],
@@ -339,15 +482,15 @@ table(
         ["Кнопка «Перевести»", "transfer-submit"],
         ["Блок сообщения о результате", "transfer-message"],
     ],
-    widths=[3.2, 2.6],
+    widths=[Cm(9.0), Cm(6.0)],
 )
 
-h("4.2. features/transfer.feature", 2)
+h("4.2. Сценарии в features/transfer.feature", 2)
 p("Сценарии для успешного перевода и для ошибки при недостаточной сумме "
-  "(плюс сценарий с нулевой суммой из задания 5.5):")
-code((root / "features" / "transfer.feature").read_text(encoding="utf-8"), "Листинг 1. features/transfer.feature")
-img("form_success.png", "Рис. 2. Успешный перевод 500 ₽", width=5.6)
-img("form_error.png", "Рис. 3. Ошибка при переводе 20000 ₽", width=5.6)
+  "(плюс сценарий с нулевой суммой из задания 5.5).")
+code((root / "features" / "transfer.feature").read_text(encoding="utf-8"), "features/transfer.feature")
+img("form_success.png", "Успешный перевод 500 ₽", width=13.5)
+img("form_error.png", "Ошибка при переводе 20000 ₽", width=13.5)
 
 h("4.3. Почему тест на data-test-id устойчив", 2)
 p("Локатор ищет элемент по атрибуту, а не по позиции в DOM, тексту или вложенности, поэтому перенос кнопки "
@@ -361,28 +504,27 @@ h("Задание 5. Шаги на Python, запуск и отчёт", 1)
 
 h("5.1. features/environment.py", 2)
 code((root / "features" / "environment.py").read_text(encoding="utf-8"),
-     "Листинг 2. Запуск браузера и настройка поиска по data-test-id")
+     "запуск браузера и настройка поиска по data-test-id")
 
 h("5.2. features/steps/transfer_steps.py", 2)
 code((root / "features" / "steps" / "transfer_steps.py").read_text(encoding="utf-8"),
-     "Листинг 3. Реализация шагов")
+     "реализация шагов сценария")
 
 h("5.3. Обращение в базу данных (db_check.py)", 2)
-code((root / "db_check.py").read_text(encoding="utf-8"), "Листинг 4. db_check.py")
+code((root / "db_check.py").read_text(encoding="utf-8"), "db_check.py")
 p("Перевод выполняется в одной транзакции (BEGIN IMMEDIATE … COMMIT): если денег недостаточно, "
   "делается ROLLBACK и выбрасывается ValueError, поэтому остатки не меняются. Вывод программы: OK.")
 
-h("5.4. Прогон тестов и отчёт Allure", 2)
+h("5.4. Прогон тестов и отчёт", 2)
 code(
     ".venv\\Scripts\\activate\n"
-    "behave -f allure_behave.formatter:AllureFormatter -o allure-results features\n"
-    "allure serve allure-results",
-    "Команды запуска",
+    "behave -f json -o reports/behave.json features\n"
+    "python make_html_report.py reports/behave.json reports/behave-report.html",
+    "команды запуска тестов и сборки отчёта",
 )
-img("behave_output.png", "Рис. 4. Результат прогона: 1 фича, 3 сценария, 18 шагов — все прошли", width=6.5)
-img("allure_overview.png", "Рис. 5. Отчёт Allure: обзор прогона", width=6.5)
-img("allure_suites.png", "Рис. 6. Отчёт Allure: список сценариев", width=6.5)
-img("allure_test_steps.png", "Рис. 7. Отчёт Allure: шаги сценария «Недостаточно средств»", width=6.5)
+img("behave_output.png", "Результат прогона: 1 фича, 3 сценария, 18 шагов — все прошли", width=15.5)
+img("report_overview.png", "HTML-отчёт: сводка прогона и список сценариев", width=15.5)
+img("report_steps.png", "HTML-отчёт: шаги сценариев", width=15.5)
 
 h("5.5. Сценарий с нулевой суммой", 2)
 p("Сценарий добавлен в transfer.feature и проходит без нового кода шагов, потому что шаги параметризованы: "
@@ -395,6 +537,7 @@ h("Задание 6. Демо и план внедрения", 1)
 
 h("6.1. Пять пунктов демо и порядок показа", 2)
 table(
+    "План демонстрации",
     ["№", "Что показываем", "Чью проблему это снимает"],
     [
         [
@@ -404,7 +547,7 @@ table(
         ],
         [
             "2",
-            "Схема инфраструктуры: репозиторий → CI → runner → Allure",
+            "Схема инфраструктуры: репозиторий → CI → runner → отчёт",
             "Разработчиков и аналитиков — вопрос «где это живёт и кто за это отвечает»",
         ],
         [
@@ -414,7 +557,7 @@ table(
         ],
         [
             "4",
-            "Видео 5–10 автотестов и отчёт Allure после прогона",
+            "Видео 5–10 автотестов и HTML-отчёт после прогона",
             "Скептиков — недоверие «а это вообще работает и показывает правду»",
         ],
         [
@@ -423,33 +566,28 @@ table(
             "Руководства и закупки — вопрос «что дальше, сколько это стоит и когда окупится»",
         ],
     ],
-    widths=[0.4, 2.9, 2.9],
+    widths=[Cm(1.0), Cm(7.0), Cm(7.0)],
 )
 
 h("6.2. План на 6 спринтов для двух автоматизаторов", 2)
 table(
-    ["Спринт", "Что делают автоматизаторы", "Что делают QA команд", "Что показываем на демо", "Покрытие регресса"],
+    "План внедрения автоматизации",
+    ["Спринт", "Автоматизаторы", "QA команд", "Что показываем на демо", "Покрытие"],
     [
-        ["1", "Разворачивают каркас: behave, Playwright, Allure, CI; пишут шаги формы перевода",
-         "Собирают реестр регресса и отдают первые 10 кейсов «Личного кабинета»",
-         "Каркас и первые 3 автотеста", "≈10 %"],
-        ["2", "Доводят 10 автотестов «Личного кабинета», добавляют проверки БД, параллельный запуск",
-         "Пишут сценарии Gherkin по своим кейсам и учатся их запускать",
-         "Отчёт Allure и время прогона", "≈20 %"],
-        ["3", "Принимают тесты «Платежей», добавляют API-проверки через httpx",
-         "Готовят сценарии «Платежей», приоритезируют денежные проверки",
-         "API-тест перевода + проверка остатка в БД", "≈30 %"],
-        ["4", "Подключают «Карты», выносят общие шаги, чистят «мигающие» тесты",
-         "Готовят сценарии «Карт», ревьюют шаги автоматизаторов",
-         "Стабильность: 0 мигающих тестов за неделю", "≈40 %"],
-        ["5", "Подключают «Кредиты», настраивают ночные прогоны и историю отчётов",
-         "Готовят сценарии «Кредитов», дежурят по падениям",
-         "Ночной прогон и динамика покрытия", "≈50 %"],
-        ["6", "Подключают «Уведомления», обучают QA самостоятельному написанию шагов, готовят документацию",
-         "Пишут и поддерживают сценарии сами, закрывают оставшийся регресс",
-         "Итог: 55 % регресса, передача каркаса командам", "≈55 %"],
+        ["1", "Каркас: behave, Playwright, HTML-отчёт, CI; шаги формы перевода",
+         "Реестр регресса, первые 10 кейсов «Личного кабинета»", "Каркас и 3 автотеста", "≈10 %"],
+        ["2", "10 автотестов «Личного кабинета», проверки БД, параллельный запуск",
+         "Сценарии Gherkin по своим кейсам, учатся запускать", "Отчёт и время прогона", "≈20 %"],
+        ["3", "Приём тестов «Платежей», API-проверки через httpx",
+         "Сценарии «Платежей», приоритизация денежных проверок", "API-тест перевода и остаток в БД", "≈30 %"],
+        ["4", "Подключение «Карт», общие шаги, чистка нестабильных тестов",
+         "Сценарии «Карт», ревью шагов", "0 нестабильных тестов за неделю", "≈40 %"],
+        ["5", "Подключение «Кредитов», ночные прогоны, история отчётов",
+         "Сценарии «Кредитов», дежурство по падениям", "Ночной прогон и динамика покрытия", "≈50 %"],
+        ["6", "Подключение «Уведомлений», обучение QA, документация",
+         "Сами пишут и поддерживают сценарии", "Итог: 55 % регресса, передача каркаса", "≈55 %"],
     ],
-    widths=[0.6, 2.1, 1.9, 1.6, 0.9],
+    widths=[Cm(1.2), Cm(5.2), Cm(4.3), Cm(3.6), Cm(1.7)],
 )
 p("Логика плана: одна новая команда в спринт, свободные дни автоматизаторы тратят на разработку шагов "
   "и на приём тестов, написанных QA. Первые два спринта — инвестиция в каркас, дальше покрытие растёт линейно.")
@@ -458,7 +596,7 @@ h("6.3. Первая команда и показатели", 2)
 p("Первой подключается «Личный кабинет»: это frontend без сложных интеграций, ручных проверок много, "
   "а результат виден пользователю сразу — быстрый эффект и удобный пример для остальных команд. "
   "К тому же именно эта команда выбрана для демо.")
-p("Показатели: (1) доля автоматизированного регресса, %; (2) время полного прогона и доля «мигающих» тестов. "
+p("Показатели: (1) доля автоматизированного регресса, %; (2) время полного прогона и доля нестабильных тестов. "
   "Если покрытие не растёт — разбираем узкое место (нет шагов, нет данных, нет доступа к стенду) и снимаем его. "
   "Если растёт доля падений без дефектов — останавливаем набор новых тестов и стабилизируем существующие.")
 
@@ -471,7 +609,7 @@ qa = [
         "1. Зачем перед выбором инструментов выяснять цель продукта и его потребителя?",
         "Инструмент выбирают под задачи и людей: если продукт денежный и критичный, нужны стабильные проверки "
         "API и БД, а не только UI; если тесты пишут ручные QA, важнее низкий порог входа, а не максимум "
-        "возможностей. Без понимания цели можно купить дорогой стек, который команда не освоит.",
+        "возможностей. Без понимания цели можно взять дорогой стек, который команда не освоит.",
     ),
     (
         "2. Почему QA-инженеров команд называют клиентами инструмента автоматизации?",
@@ -512,7 +650,7 @@ qa = [
         "8. Зачем нужно демо и что на нём обязательно показывают?",
         "Демо нужно, чтобы заказчики и команды увидели работающий каркас и согласовали ожидания до того, "
         "как вложения станут большими. Обязательно показывают цель автоматизации, живой прогон тестов, "
-        "отчёт Allure и план внедрения с эффектом.",
+        "отчёт о результатах и план внедрения с эффектом.",
     ),
     (
         "9. Почему на одного автоматизатора берут не больше пяти команд?",
@@ -539,12 +677,13 @@ features/transfer.feature          сценарии Gherkin
 features/steps/transfer_steps.py   шаги на Python (Playwright)
 features/environment.py            запуск браузера, настройка data-test-id
 db_check.py                        проверка остатков через sqlite3
+make_html_report.py                сборка HTML-отчёта из JSON-результатов behave
 requirements.txt                   зависимости проекта
 .github/workflows/tests.yml        CI-пайплайн
-allure-results/, allure-report/    результаты прогона и HTML-отчёт
+reports/                           behave.json и behave-report.html
 screenshots/                       скриншоты для отчёта
 take_shots.py, term_shot.py, diagram.py, make_report.py   вспомогательные скрипты""",
-    "Листинг 5. Файлы проекта",
+    "файлы проекта",
 )
 
 h("Как запустить", 1)
@@ -553,15 +692,14 @@ code(
 .venv\\Scripts\\activate
 pip install -r requirements.txt
 playwright install chromium
-behave -f allure_behave.formatter:AllureFormatter -o allure-results features
-allure generate allure-results -o allure-report --clean
-allure open allure-report
+behave -f json -o reports/behave.json features
+python make_html_report.py reports/behave.json reports/behave-report.html
 python db_check.py""",
-    "Листинг 6. Команды полного цикла",
+    "команды полного цикла",
 )
 p("Фактический результат прогона: 1 фича, 3 сценария, 18 шагов — все пройдены, "
-  "100 % успешных тестов в отчёте Allure; db_check.py выводит OK.", bold=True)
+  "в HTML-отчёте 100 % успешных тестов; db_check.py выводит OK.", bold=True)
 
 out = root / "Отчёт_Практическая_работа_Python_автоматизация_тестирования.docx"
 doc.save(out)
-print("saved", out)
+print("saved", out, "| таблиц:", TABLES, "| рисунков:", FIGURES)

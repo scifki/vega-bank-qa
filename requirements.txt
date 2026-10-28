@@ -1,3 +1,2 @@
 behave
 playwright
-allure-behave

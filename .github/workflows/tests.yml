@@ -23,7 +23,11 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Прогнать тесты
-        run: behave -f allure_behave.formatter:AllureFormatter -o allure-results features
+        run: behave -f json -o reports/behave.json features
+
+      - name: Собрать HTML-отчёт
+        if: always()
+        run: python make_html_report.py reports/behave.json reports/behave-report.html
 
       - name: Проверить обращение к БД
         run: python db_check.py
@@ -32,5 +36,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: allure-results
-          path: allure-results
+          name: behave-report
+          path: reports/behave-report.html
