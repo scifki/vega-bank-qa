@@ -18,6 +18,7 @@ TARGETS = {
     "steps": ("gh_steps.png", f"{REPO}/blob/main/features/steps/transfer_steps.py"),
     "db": ("gh_db.png", f"{REPO}/blob/main/db_check.py"),
     "actions": ("gh_actions.png", f"{REPO}/actions"),
+    "run": ("gh_actions.png", f"{REPO}/actions/runs/40699352386"),
 }
 
 keys = sys.argv[1:] or list(TARGETS)
