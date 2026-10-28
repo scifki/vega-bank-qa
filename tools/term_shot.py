@@ -2,11 +2,11 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-root = Path(__file__).parent
+root = Path(__file__).resolve().parent.parent
 shots = root / "screenshots"
 shots.mkdir(exist_ok=True)
 
-log = [line.rstrip() for line in (root / "behave_log.txt").read_text(encoding="utf-8").splitlines() if line.strip()]
+log = [line.rstrip() for line in (root / "tools" / "behave_log.txt").read_text(encoding="utf-8").splitlines() if line.strip()]
 log = [line for line in log if not line.startswith("USING RUNNER")]
 
 cmd1 = (
@@ -35,3 +35,4 @@ for text, f in lines:
 
 img.save(shots / "behave_output.png")
 print("terminal shot ok", img.size)
+

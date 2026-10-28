@@ -1,14 +1,13 @@
 from pathlib import Path
 
 from docx import Document
-from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Inches, Pt, RGBColor
+from docx.shared import Cm, Pt, RGBColor
 
-root = Path(__file__).parent
+root = Path(__file__).resolve().parent.parent
 shots = root / "screenshots"
 
 doc = Document()
@@ -36,6 +35,7 @@ section.right_margin = Cm(1.5)
 
 TABLES = 0
 FIGURES = 0
+LISTINGS = 0
 
 
 def add_page_number(paragraph):
@@ -54,7 +54,6 @@ def add_page_number(paragraph):
     run.font.size = Pt(12)
 
 
-# нумерация страниц: титульный лист без номера, но считается первым
 section.different_first_page_header_footer = True
 footer_p = section.footer.paragraphs[0]
 footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -107,9 +106,6 @@ def shade(paragraph, color="F2F2F2"):
     pPr.append(shd)
 
 
-LISTINGS = 0
-
-
 def code(text, caption=None):
     global LISTINGS
     if caption:
@@ -134,7 +130,6 @@ def code(text, caption=None):
 
 
 def plain_table(rows, widths=None, header=None):
-    """Таблица без подписи (титульный лист)."""
     cols = len(rows[0])
     t = doc.add_table(rows=0, cols=cols)
     t.style = "Table Grid"
@@ -682,7 +677,7 @@ requirements.txt                   зависимости проекта
 .github/workflows/tests.yml        CI-пайплайн
 reports/                           behave.json и behave-report.html
 screenshots/                       скриншоты для отчёта
-take_shots.py, term_shot.py, diagram.py, make_report.py   вспомогательные скрипты""",
+tools/                             вспомогательные скрипты отчёта""",
     "файлы проекта",
 )
 
@@ -702,4 +697,4 @@ p("Фактический результат прогона: 1 фича, 3 сц�
 
 out = root / "Отчёт_Практическая_работа_Python_автоматизация_тестирования.docx"
 doc.save(out)
-print("saved", out, "| таблиц:", TABLES, "| рисунков:", FIGURES)
+print("saved", out.name, "| таблиц:", TABLES, "| рисунков:", FIGURES)

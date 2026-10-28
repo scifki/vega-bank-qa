@@ -5,7 +5,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-root = Path(__file__).parent
+root = Path(__file__).resolve().parent.parent
 shots = root / "screenshots"
 shots.mkdir(exist_ok=True)
 report = root / "reports" / "behave-report.html"
@@ -46,3 +46,4 @@ with sync_playwright() as pw:
     browser.close()
 
 print("screenshots ok")
+

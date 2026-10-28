@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-root = Path(__file__).parent
+root = Path(__file__).resolve().parent.parent
 shots = root / "screenshots"
 shots.mkdir(exist_ok=True)
 
@@ -56,3 +56,4 @@ d.text(
 
 img.save(shots / "schema.png")
 print("schema ok", img.size)
+

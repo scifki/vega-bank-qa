@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Перевод между своими счетами</title>
+</head>
+<body>
+<h1>Перевод между своими счетами</h1>
+<p data-test-id="balance-info">Остаток на текущем счёте: 10000 ₽</p>
+<form id="transfer">
+<select data-test-id="transfer-source">
+<option>Текущий счёт</option>
+<option>Накопительный счёт</option>
+</select>
+<select data-test-id="transfer-target">
+<option>Накопительный счёт</option>
+<option>Текущий счёт</option>
+</select>
+<input type="text" placeholder="Сумма" data-test-id="transfer-amount">
+<button type="submit" data-test-id="transfer-submit">Перевести</button>
+<div data-test-id="transfer-message"></div>
+</form>
+<script>
+const balance = 10000;
+document.getElementById("transfer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const amount = Number(e.target.querySelector("input").value);
+  const message = e.target.querySelector("div");
+  if (!(amount > 0)) {
+    message.textContent = "Введите сумму больше нуля";
+  } else if (amount > balance) {
+    message.textContent = "Недостаточно средств";
+  } else {
+    message.textContent = "Перевод выполнен";
+  }
+});
+</script>
+</body>
+</html>
