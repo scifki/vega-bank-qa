@@ -18,7 +18,8 @@
 | `requirements.txt` | зависимости проекта |
 | `.github/workflows/tests.yml` | CI: установка зависимостей, прогон тестов, публикация отчёта |
 | `reports/` | `behave.json` и `behave-report.html` (создаются при прогоне) |
-| `screenshots/` | скриншоты для отчёта |
+| `docs/` | `index.html` — отчёт, который публикуется на GitHub Pages |
+| `screenshots/` | скриншоты с GitHub для отчёта |
 | `Отчёт_....docx` | отчёт по заданиям 1–6 и контрольным вопросам |
 
 ## Запуск
@@ -38,6 +39,12 @@ python db_check.py
 Ожидаемый результат: `3 scenarios passed`, `18 steps passed`, `OK` в конце.
 
 После прогона отчёт открывается двойным щелчком: `reports\behave-report.html`.
+
+## Ссылки
+
+- Репозиторий: https://github.com/scifki/vega-bank-qa
+- HTML-отчёт (GitHub Pages): https://scifki.github.io/vega-bank-qa/
+- Прогоны CI: https://github.com/scifki/vega-bank-qa/actions
 
 ## Результаты
 

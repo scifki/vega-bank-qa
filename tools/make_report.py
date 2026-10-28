@@ -454,11 +454,16 @@ table(
         ["features/steps/", "Реализация шагов на Python: один шаг используется во многих сценариях"],
         ["features/environment.py", "Хуки before_all / before_scenario / after_*: запуск браузера, настройка data-test-id"],
         ["requirements.txt", "Список зависимостей: одной командой pip install -r разворачивается окружение"],
-        ["reports/", "behave.json с результатами прогона и собранный из него behave-report.html; в git не коммитится"],
+        ["reports/", "behave.json с результатами прогона и собранный из него behave-report.html; рабочие файлы, в git не коммитятся"],
+        ["docs/", "index.html — копия HTML-отчёта, которую GitHub Pages публикует как веб-страницу"],
         [".github/workflows/tests.yml", "CI-пайплайн: установка зависимостей, прогон тестов, публикация отчёта"],
     ],
     widths=[Cm(5.0), Cm(10.0)],
 )
+p("Репозиторий проекта: https://github.com/scifki/vega-bank-qa (публичный). "
+  "HTML-отчёт опубликован на GitHub Pages: https://scifki.github.io/vega-bank-qa/. "
+  "На рисунке 2 — страница репозитория со всеми файлами проекта.")
+img("gh_repo.png", "Репозиторий проекта на GitHub", width=15.5)
 
 # ---------- Задание 4 ----------
 h("Задание 4. Якоря на UI и сценарий Gherkin", 1)
@@ -481,11 +486,10 @@ table(
 )
 
 h("4.2. Сценарии в features/transfer.feature", 2)
-p("Сценарии для успешного перевода и для ошибки при недостаточной сумме "
-  "(плюс сценарий с нулевой суммой из задания 5.5).")
+p("Сценарии для успешного перевода, для ошибки при недостаточной сумме и для нулевой суммы "
+  "(последний добавлен в задании 5.5). Файл лежит в репозитории на GitHub.")
 code((root / "features" / "transfer.feature").read_text(encoding="utf-8"), "features/transfer.feature")
-img("form_success.png", "Успешный перевод 500 ₽", width=13.5)
-img("form_error.png", "Ошибка при переводе 20000 ₽", width=13.5)
+img("gh_feature.png", "Файл features/transfer.feature в репозитории GitHub", width=15.0)
 
 h("4.3. Почему тест на data-test-id устойчив", 2)
 p("Локатор ищет элемент по атрибуту, а не по позиции в DOM, тексту или вложенности, поэтому перенос кнопки "
@@ -504,11 +508,13 @@ code((root / "features" / "environment.py").read_text(encoding="utf-8"),
 h("5.2. features/steps/transfer_steps.py", 2)
 code((root / "features" / "steps" / "transfer_steps.py").read_text(encoding="utf-8"),
      "реализация шагов сценария")
+img("gh_steps.png", "Файл features/steps/transfer_steps.py в репозитории GitHub", width=15.0)
 
 h("5.3. Обращение в базу данных (db_check.py)", 2)
 code((root / "db_check.py").read_text(encoding="utf-8"), "db_check.py")
 p("Перевод выполняется в одной транзакции (BEGIN IMMEDIATE … COMMIT): если денег недостаточно, "
   "делается ROLLBACK и выбрасывается ValueError, поэтому остатки не меняются. Вывод программы: OK.")
+img("gh_db.png", "Файл db_check.py в репозитории GitHub", width=15.0)
 
 h("5.4. Прогон тестов и отчёт", 2)
 code(
@@ -517,9 +523,13 @@ code(
     "python make_html_report.py reports/behave.json reports/behave-report.html",
     "команды запуска тестов и сборки отчёта",
 )
-img("behave_output.png", "Результат прогона: 1 фича, 3 сценария, 18 шагов — все прошли", width=15.5)
-img("report_overview.png", "HTML-отчёт: сводка прогона и список сценариев", width=15.5)
-img("report_steps.png", "HTML-отчёт: шаги сценариев", width=15.5)
+p("Те же команды выполняет CI-пайплайн при каждом push: установка зависимостей, прогон сценариев, "
+  "сборка HTML-отчёта и проверка базы. На рисунке 6 — успешный прогон в GitHub Actions.")
+img("gh_actions.png", "Успешный прогон автотестов в GitHub Actions", width=15.5)
+p("HTML-отчёт публикуется на GitHub Pages и открывается по ссылке "
+  "https://scifki.github.io/vega-bank-qa/: сводка прогона, список сценариев и шаги по каждому из них.")
+img("gh_report.png", "HTML-отчёт на GitHub Pages: сводка прогона и сценарии", width=15.5)
+img("gh_report_steps.png", "HTML-отчёт на GitHub Pages: шаги сценариев", width=15.5)
 
 h("5.5. Сценарий с нулевой суммой", 2)
 p("Сценарий добавлен в transfer.feature и проходит без нового кода шагов, потому что шаги параметризованы: "
@@ -694,6 +704,9 @@ python db_check.py""",
 )
 p("Фактический результат прогона: 1 фича, 3 сценария, 18 шагов — все пройдены, "
   "в HTML-отчёте 100 % успешных тестов; db_check.py выводит OK.", bold=True)
+p("Ссылки: репозиторий — https://github.com/scifki/vega-bank-qa, "
+  "HTML-отчёт — https://scifki.github.io/vega-bank-qa/, "
+  "прогоны CI — https://github.com/scifki/vega-bank-qa/actions.")
 
 out = root / "Отчёт_Практическая_работа_Python_автоматизация_тестирования.docx"
 doc.save(out)
